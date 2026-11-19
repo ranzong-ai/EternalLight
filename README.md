@@ -4,6 +4,8 @@
 
 A tiny macOS menu-bar app that keeps your Mac awake — really awake, lid closed included — with one click.
 
+**Eternal Light** is a free, open-source menu-bar utility that toggles the system-level `pmset disablesleep` switch: one click keeps your Mac awake — idle, or **with the lid closed** — so remote sessions and long-running tasks stay alive. A battery guardrail restores normal sleep automatically if the charge drops to 25% while on battery power, so always-on never drains the battery to empty. The whole app is 252 KB — 348 lines of Swift in a single file, zero dependencies — and every toggle asks for Touch ID.
+
 一个极小的 macOS 菜单栏应用：一键让 Mac 真正不睡，合盖也不睡。
 
 **名字由来**：长明灯是中国古代佛前、陵寝中长年不熄的灯 — 灯不灭，人不睡。这个工具守的就是这一件事。
@@ -32,6 +34,12 @@ macOS 自带的「防睡眠」设置只能防闲置睡眠，**合盖照样睡**�
 - 切换开关时需通过 Touch ID 或管理员密码验证
 
 ## 安装
+
+### 方式一：下载安装包（即将提供）
+
+预打包的 `EternalLight-v3.9.zip` 将随 v3.9 发布在 [Releases 页面](https://github.com/ranzong-ai/EternalLight/releases)（正在准备中，尚未上线）。上线后：下载解压，把 `长明.app` 拖进「应用程序」；首次打开请右键点应用选「打开」——应用是 ad-hoc 签名、未经苹果公证，这是 macOS 对未公证应用的统一确认，只需一次。在此之前，请用方式二从源码构建，效果相同。
+
+### 方式二：从源码构建
 
 ```bash
 git clone https://github.com/ranzong-ai/EternalLight.git
