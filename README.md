@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/icon.svg" width="160" alt="长明 Eternal Light 图标"></p>
+
 # 长明 Eternal Light
 
 A tiny macOS menu-bar app that keeps your Mac awake — really awake, lid closed included — with one click.
@@ -17,16 +19,16 @@ macOS 自带的「防睡眠」设置只能防闲置睡眠，**合盖照样睡**�
 
 ## 界面
 
-- 菜单栏只有一朵小火焰，**没有文字**：单色模板图随系统菜单栏深浅自动适配 — 常开时是实心火焰，焰尖带缓慢的摇曳动效；正常模式是同一火焰的 35% 淡影
+- 菜单栏只有一朵小火焰，**没有文字**：单色模板图随系统菜单栏深浅自动适配 — 常开时是实心火焰；正常模式是同一火焰的 35% 淡影
 - 点小灯弹出小面板：当前状态、场景说明、一个大切换按钮
-- 切换时系统弹窗输入管理员密码（`pmset` 需要管理员权限），切换成功后发一条系统通知
+- 切换时用指纹验证（Touch ID；刚验证过会直接通过，不可用时退回管理员密码），切换成功后发一条系统通知
 - 状态每 3 秒与系统实际值同步 — 在别处改了开关，图标会自己跟上
 
 ## 系统要求
 
 - macOS 13 或更高（在 macOS 26 上开发与测试）
 - 构建需要 Xcode Command Line Tools（`swiftc`、`iconutil`、`sips`）
-- 切换开关时需要管理员密码
+- 切换开关时需通过 Touch ID 或管理员密码验证
 
 ## 安装
 
