@@ -3,8 +3,10 @@ import UserNotifications
 import ServiceManagement
 
 // 长明 EternalLight — menu-bar toggle for `pmset disablesleep`.
-// Icon-only status item: golden lamp (breathing) = always-on, gray lamp = normal sleep.
+// Icon-only status item: solid flame = always-on, same flame at 35% = normal sleep.
 // Click opens a small panel with the live state and the toggle button.
+// Battery guardrail (v3.9): on battery at or below 25% while always-on is
+// engaged, restore normal sleep once and notify — never drain to empty.
 
 class PanelController: NSViewController {
     var statusLabel: NSTextField!
@@ -22,41 +24,41 @@ class PanelController: NSViewController {
         // Everything else is system font; the status line is 13 semibold in
         // labelColor, and EVERY caption (subtitle, state note, auth hint,
         // quit note, quit button) shares one tier: 11 regular, secondaryLabelColor.
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 264, height: 228))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 264, height: 244))
 
         // Group 1 — identity
         let name = NSTextField(labelWithString: "长明")
         name.font = NSFont(name: "Songti SC Bold", size: 18) ?? NSFont(name: "Songti SC", size: 18) ?? .boldSystemFont(ofSize: 17)
         name.alignment = .center
-        name.frame = NSRect(x: 12, y: 198, width: 240, height: 26)
+        name.frame = NSRect(x: 12, y: 214, width: 240, height: 26)
         root.addSubview(name)
 
         let subtitle = NSTextField(labelWithString: "Eternal Light")
         subtitle.font = .systemFont(ofSize: 11)
         subtitle.textColor = .secondaryLabelColor
         subtitle.alignment = .center
-        subtitle.frame = NSRect(x: 12, y: 181, width: 240, height: 16)
+        subtitle.frame = NSRect(x: 12, y: 197, width: 240, height: 16)
         root.addSubview(subtitle)
 
         // Group 2 — current state
         statusLabel = NSTextField(labelWithString: "—")
         statusLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         statusLabel.alignment = .center
-        statusLabel.frame = NSRect(x: 12, y: 152, width: 240, height: 20)
+        statusLabel.frame = NSRect(x: 12, y: 168, width: 240, height: 20)
         root.addSubview(statusLabel)
 
         subLabel = NSTextField(labelWithString: "—")
         subLabel.font = .systemFont(ofSize: 11)
         subLabel.textColor = .secondaryLabelColor
         subLabel.alignment = .center
-        subLabel.frame = NSRect(x: 12, y: 132, width: 240, height: 18)
+        subLabel.frame = NSRect(x: 12, y: 148, width: 240, height: 18)
         root.addSubview(subLabel)
 
-        // Group 3 — the action, with its explanation attached
+        // Group 3 — the action, with its explanations attached
         toggleButton = NSButton(title: "切换", target: self, action: #selector(toggleClicked))
         toggleButton.bezelStyle = .rounded
         toggleButton.controlSize = .large
-        toggleButton.frame = NSRect(x: 57, y: 94, width: 150, height: 30)
+        toggleButton.frame = NSRect(x: 57, y: 110, width: 150, height: 30)
         root.addSubview(toggleButton)
 
         // Explains the sudo trust cache in plain words, so neither prompt state
@@ -65,8 +67,16 @@ class PanelController: NSViewController {
         authHint.font = .systemFont(ofSize: 11)
         authHint.textColor = .secondaryLabelColor
         authHint.alignment = .center
-        authHint.frame = NSRect(x: 12, y: 74, width: 240, height: 14)
+        authHint.frame = NSRect(x: 12, y: 90, width: 240, height: 14)
         root.addSubview(authHint)
+
+        // The battery guardrail, in the same caption tier as every other note.
+        let guardrailHint = NSTextField(labelWithString: "电池护栏：未插电且电量 ≤25% 自动切回")
+        guardrailHint.font = .systemFont(ofSize: 11)
+        guardrailHint.textColor = .secondaryLabelColor
+        guardrailHint.alignment = .center
+        guardrailHint.frame = NSRect(x: 12, y: 72, width: 240, height: 14)
+        root.addSubview(guardrailHint)
 
         // Group 4 — footer: quit, behind a hairline
         let separator = NSBox()
@@ -208,6 +218,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.panel.update(disabled: disabled)
             self.statusItem.button?.image = disabled ? self.onImage : self.offImage
         }
+        checkGuardrail()
+    }
+
+    // MARK: - Battery guardrail
+
+    // While always-on is engaged, running on battery down to this charge
+    // restores normal sleep — the one way always-on can hurt the machine is
+    // draining the battery to empty in a bag, and this closes that hole.
+    let guardrailThreshold = 25
+    // Latched once per unplugged episode so a failed attempt (no fingerprint
+    // available) is not retried every poll; plugging back in re-arms it.
+    // The guardrail never re-enables always-on by itself.
+    var guardrailFired = false
+
+    func batteryState() -> (onBattery: Bool, percent: Int)? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        p.arguments = ["-g", "batt"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = Pipe()
+        do { try p.run() } catch { return nil }
+        p.waitUntilExit()
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        guard let range = out.range(of: #"(\d+)%"#, options: .regularExpression),
+              let percent = Int(out[range].dropLast()) else { return nil }
+        return (out.contains("Battery Power"), percent)
+    }
+
+    func checkGuardrail() {
+        guard let batt = batteryState() else { return }
+        if !batt.onBattery {
+            guardrailFired = false
+            return
+        }
+        guard !guardrailFired, batt.percent <= guardrailThreshold, sleepDisabled() else { return }
+        guardrailFired = true
+        // No password-dialog fallback here: if nobody is at the machine, a
+        // dialog would just hang; the notification asks for a manual switch.
+        toggleMode(silent: true, allowPasswordFallback: false)
+        postGuardrailNotification(percent: batt.percent, switched: !sleepDisabled())
+    }
+
+    func postGuardrailNotification(percent: Int, switched: Bool) {
+        let content = UNMutableNotificationContent()
+        content.title = "长明 · 电池护栏"
+        content.body = switched
+            ? "电量已降至 \(percent)%，已自动切回正常模式，避免电池耗尽"
+            : "电量已降至 \(percent)%，自动切换需要指纹验证未完成，请手动切回正常模式"
+        content.sound = .default
+        let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(req)
     }
 
     // Touch ID path is available when the user has enabled pam_tid for sudo
@@ -248,12 +310,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func toggleMode() {
+        toggleMode(silent: false, allowPasswordFallback: true)
+    }
+
+    func toggleMode(silent: Bool, allowPasswordFallback: Bool) {
         let target = sleepDisabled() ? "0" : "1"
         let wantDisabled = target == "1"
         if touchIDEnabled() {
             toggleViaTouchID(target: target)
         }
-        if sleepDisabled() != wantDisabled {
+        if sleepDisabled() != wantDisabled && allowPasswordFallback {
             // Touch ID not set up, cancelled or unavailable (e.g. lid closed):
             // fall back to the classic administrator password dialog.
             let script = "do shell script \"pmset disablesleep \(target)\" with administrator privileges"
@@ -261,7 +327,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSAppleScript(source: script)?.executeAndReturnError(&err)
         }
         refresh()
-        postNotification(disabled: sleepDisabled())
+        if !silent {
+            postNotification(disabled: sleepDisabled())
+        }
     }
 
     func postNotification(disabled: Bool) {
